@@ -28,7 +28,7 @@ namespace UDP_FTP.File_Handler
         public Communicate()
         {
             // TODO: Initializes another instance of the IPEndPoint for the remote host
-
+             
 
             // TODO: Specify the buffer size
 
