@@ -3,9 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using static UDP_FTP.Models.Enums;
+using static Client.Models.Enums;
 
-namespace UDP_FTP.Models
+namespace Client.Models
 {
     public class ConSettings
     {

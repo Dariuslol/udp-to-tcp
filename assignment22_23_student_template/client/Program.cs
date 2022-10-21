@@ -1,11 +1,14 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
-using UDP_FTP.Models;
-using UDP_FTP.Error_Handling;
-using static UDP_FTP.Models.Enums;
+using System.Linq;
+using Client.Models;
+using Client.Error_Handling;
+using System.Globalization;
+using static Client.Models.Enums;
 
 namespace Client
 {
@@ -15,6 +18,8 @@ namespace Client
         {
             string serverIP = "127.0.0.1";
             string localIP = "127.0.0.1";
+
+            int[] failOn = { 4, 15, 34 };
 
             // TODO: add the student number of your group members as a string value. 
             // string format example: "Jan Jansen 09123456" 
@@ -47,11 +52,6 @@ namespace Client
             r.From = localIP;
             r.FileName = "test.txt";
 
-            DataMSG D = new DataMSG();
-            D.Type = Messages.DATA;
-            D.To = serverIP;
-            D.From = localIP;
-
             AckMSG ack = new AckMSG();
             ack.Type = Messages.ACK;
             ack.To = serverIP;
@@ -61,6 +61,11 @@ namespace Client
             cls.Type = Messages.CLOSE_REQUEST;
             cls.To = serverIP;
             cls.From = localIP;
+
+
+            ConSettings conSettings = new();
+            conSettings.From = serverIP;
+            conSettings.To = localIP;
 
             try
             {
@@ -81,20 +86,19 @@ namespace Client
                 var helloReplyString = Encoding.ASCII.GetString(buffer, 0, helloReplyBytes);
                 var helloReply = JsonSerializer.Deserialize<HelloMSG>(helloReplyString);
 
-                if (helloReply.Type != Messages.HELLO_REPLY) 
-                {
-                    Console.WriteLine("ERROR:\tGot response that is not a HELLO_REPLY");
-                    return;
-                }
-                Console.WriteLine($"received with ConID: {helloReply.ConID}");
-                
+                ErrorHandler.VerifyGreeting(helloReply, conSettings);
+                Console.WriteLine("received!");
+                conSettings.ConID = helloReply.ConID;
+
+                r.ConID = conSettings.ConID;
+                ack.ConID = conSettings.ConID;
+                cls.ConID = conSettings.ConID;
 
                 // TODO: Send the RequestMSG message requesting to download a file name
                 Console.Write("INFO:\tsending request message to server... ");
-                r.ConID = helloReply.ConID;
                 msg = Encoding.ASCII.GetBytes(JsonSerializer.Serialize(r));
                 sock.SendTo(msg, msg.Length, SocketFlags.None, remoteEndpoint);
-                Console.WriteLine("done");
+                Console.WriteLine("done!");
 
                 
                 // TODO: Receive a RequestMSG from remoteEndpoint
@@ -102,17 +106,57 @@ namespace Client
                 Console.Write("INFO:\tWaiting for server REQUEST_REPLY message... ");
                 var requestReplyBytes = sock.ReceiveFrom(buffer, ref receivingEP);
                 var requestReplyJson = Encoding.ASCII.GetString(buffer, 0, requestReplyBytes);
-                var requestReply = JsonSerializer.Deserialize<HelloMSG>(requestReplyJson);
+                var requestReply = JsonSerializer.Deserialize<RequestMSG>(requestReplyJson);
 
-                if (requestReply.Type != Messages.REPLY) 
+                ErrorHandler.VerifyRequest(requestReply, conSettings);
+                Console.WriteLine($"received!");
+
+
+                Dictionary<int, byte[]> gotten = new();
+
+                bool waitingForData = true;
+                while (waitingForData)
                 {
-                    Console.WriteLine("ERROR Got response that is not a REQUEST_REPLY" + requestReply.Type);
-                    return;
+                    var dataMessageBytes = sock.ReceiveFrom(buffer, ref receivingEP);
+                    var dataMessageJson = Encoding.ASCII.GetString(buffer, 0, dataMessageBytes);
+                    DataMSG dataMessage = JsonSerializer.Deserialize<DataMSG>(dataMessageJson);
+                        
+                    if (failOn.Contains(dataMessage.Sequence))
+                    {
+                        failOn[Array.IndexOf(failOn, dataMessage.Sequence)] = -1;
+                        continue;
+                    }
+
+                    Console.WriteLine($"[seq: {dataMessage.Sequence}] {Encoding.ASCII.GetString(dataMessage.Data)}");
+                                            
+                    if (gotten.ContainsKey(dataMessage.Sequence)) 
+                    {
+                        gotten.Add(dataMessage.Sequence, dataMessage.Data);
+                    }
+                    else
+                    {
+                        gotten[dataMessage.Sequence] = dataMessage.Data;
+                    }
+                    
+                    ack.Sequence = dataMessage.Sequence;
+                    var ackBytes = Encoding.ASCII.GetBytes(JsonSerializer.Serialize(ack));
+                    sock.SendTo(ackBytes, ackBytes.Length, SocketFlags.None, remoteEndpoint);
+                    
+                    if (!dataMessage.More)
+                        for (int gottenKey = 0; gottenKey <= dataMessage.Sequence; gottenKey++)
+                        {
+                            if (!gotten.ContainsKey(gottenKey))
+                                break;
+                            if (gottenKey == dataMessage.Sequence)
+                                waitingForData = false;
+                        }
                 }
-                Console.WriteLine($"received");
 
                 // TODO: Check if there are more DataMSG messages to be received 
                 // receive the message and verify if there are no errors
+                //
+                
+
 
                 // TODO: Send back AckMSG for each received DataMSG 
 
@@ -123,9 +167,10 @@ namespace Client
                 // TODO: confirm close message
 
             }
-            catch
+            catch (Exception err)
             {
                 Console.WriteLine("\n Socket Error. Terminating");
+                Console.WriteLine("ERROR: " + err.StackTrace);
             }
 
             Console.WriteLine("Download Complete!");
