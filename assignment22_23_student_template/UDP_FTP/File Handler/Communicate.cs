@@ -67,7 +67,13 @@ namespace UDP_FTP.File_Handler
                 Type = Messages.HELLO_REPLY,
             };
 
-            RequestMSG req = new RequestMSG();
+            RequestMSG req = new RequestMSG
+            {
+                ConID = C.ConID,
+                From = C.From,
+                Type = Messages.REPLY,
+            };
+
             DataMSG data = new DataMSG();
             AckMSG ack = new AckMSG();
             CloseMSG cls = new CloseMSG();
@@ -113,15 +119,29 @@ namespace UDP_FTP.File_Handler
             // TODO: Receive the next message
             // Expected message is a download RequestMSG message containing the file name
             // Receive the message and verify if there are no errors
+            int requestMessageBytes = socket.ReceiveFrom(buffer, ref remoteEP);
+            var requestMessageJson = Encoding.ASCII.GetString(buffer, 0, requestMessageBytes);
+            var requestMessage = JsonSerializer.Deserialize<RequestMSG>(requestMessageJson);
+            if (requestMessage.Type != Messages.REQUEST && requestMessage.ConID == C.ConID)
+            {
+                Console.WriteLine("ERROR:\tGot message that is not a request message or the connection Id was wrong");
+                return ErrorType.BADREQUEST;
+            }
             
 
 
             // TODO: Send a RequestMSG of type REPLY message to remoteEndpoint verifying the status
+            req.To = C.To;
+            req.FileName = requestMessage.FileName;
+            req.Status = ErrorType.NOERROR;
 
+            var requestReplyJson = JsonSerializer.Serialize(req);
+            var requestReplyBytes = Encoding.ASCII.GetBytes(requestReplyJson);
+            socket.SendTo(requestReplyBytes, requestReplyBytes.Length, SocketFlags.None, remoteEP);
 
 
             // TODO:  Start sending file data by setting first the socket ReceiveTimeout value
-
+            
 
 
             // TODO: Open and read the text-file first

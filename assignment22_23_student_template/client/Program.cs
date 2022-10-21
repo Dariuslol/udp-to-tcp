@@ -27,22 +27,40 @@ namespace Client
             Socket sock;
 
             // TODO: Initialise the socket/s as needed from the description of the assignment
-            var serverEndpoint = new IPEndPoint(IPAddress.Parse(serverIP), 5004);
+            // own ip
+            var receivingEndpoint = new IPEndPoint(IPAddress.Parse(serverIP), 5010);
+            var receivingEP = (EndPoint)receivingEndpoint;
+    
 
-            var localEndpoint = new IPEndPoint(IPAddress.Any, 5010);
-            var localEP = (EndPoint)localEndpoint;
+            // server ip
+            var remoteEndpoint = new IPEndPoint(IPAddress.Parse(serverIP), 5004);
+
 
             HelloMSG h = new HelloMSG();
-            h.To = serverIP;
-            h.From = localIP;
-                
-            RequestMSG r = new RequestMSG();
+            h.Type = Messages.HELLO;
             h.To = serverIP;
             h.From = localIP;
 
+            RequestMSG r = new RequestMSG();
+            r.Type = Messages.REQUEST;
+            r.To = serverIP;
+            r.From = localIP;
+            r.FileName = "test.txt";
+
             DataMSG D = new DataMSG();
+            D.Type = Messages.DATA;
+            D.To = serverIP;
+            D.From = localIP;
+
             AckMSG ack = new AckMSG();
+            ack.Type = Messages.ACK;
+            ack.To = serverIP;
+            ack.From = localIP;
+
             CloseMSG cls = new CloseMSG();
+            cls.Type = Messages.CLOSE_REQUEST;
+            cls.To = serverIP;
+            cls.From = localIP;
 
             try
             {
@@ -51,27 +69,47 @@ namespace Client
                 
 
                 // TODO: Send hello mesg
-                h.From = "127.0.0.1";
-                h.To = "127.0.0.1";
-                h.Type = Messages.HELLO;
-
+                Console.Write("INFO:\tsending hello message to server... ");
                 msg = Encoding.ASCII.GetBytes(JsonSerializer.Serialize(h));
-                sock.SendTo(msg, msg.Length, SocketFlags.None, serverEndpoint);
+                sock.SendTo(msg, msg.Length, SocketFlags.None, remoteEndpoint);
+                Console.WriteLine("done");
+
 
                 // TODO: Receive and verify a HelloMSG 
-                var helloReply = JsonSerializer.Deserialize<HelloMSG>(Encoding.ASCII.GetString(buffer, 0, sock.ReceiveFrom(buffer, ref localEP)));
+                Console.Write("INFO:\tWaiting for server HELLO_REPLY message... ");
+                var helloReplyBytes = sock.ReceiveFrom(buffer, ref receivingEP);
+                var helloReplyString = Encoding.ASCII.GetString(buffer, 0, helloReplyBytes);
+                var helloReply = JsonSerializer.Deserialize<HelloMSG>(helloReplyString);
+
                 if (helloReply.Type != Messages.HELLO_REPLY) 
                 {
-                    Console.WriteLine("Got response that is NOT HELLO_REPLY");
+                    Console.WriteLine("ERROR:\tGot response that is not a HELLO_REPLY");
                     return;
                 }
+                Console.WriteLine($"received with ConID: {helloReply.ConID}");
+                
 
                 // TODO: Send the RequestMSG message requesting to download a file name
-                r.Type = Messages.REQUEST;
+                Console.Write("INFO:\tsending request message to server... ");
+                r.ConID = helloReply.ConID;
+                msg = Encoding.ASCII.GetBytes(JsonSerializer.Serialize(r));
+                sock.SendTo(msg, msg.Length, SocketFlags.None, remoteEndpoint);
+                Console.WriteLine("done");
 
+                
                 // TODO: Receive a RequestMSG from remoteEndpoint
                 // receive the message and verify if there are no errors
+                Console.Write("INFO:\tWaiting for server REQUEST_REPLY message... ");
+                var requestReplyBytes = sock.ReceiveFrom(buffer, ref receivingEP);
+                var requestReplyJson = Encoding.ASCII.GetString(buffer, 0, requestReplyBytes);
+                var requestReply = JsonSerializer.Deserialize<HelloMSG>(requestReplyJson);
 
+                if (requestReply.Type != Messages.REPLY) 
+                {
+                    Console.WriteLine("ERROR Got response that is not a REQUEST_REPLY" + requestReply.Type);
+                    return;
+                }
+                Console.WriteLine($"received");
 
                 // TODO: Check if there are more DataMSG messages to be received 
                 // receive the message and verify if there are no errors
