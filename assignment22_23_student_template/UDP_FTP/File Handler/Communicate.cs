@@ -175,7 +175,7 @@ namespace UDP_FTP.File_Handler
                     if (sentLastData)
                         break;
 
-                    if ((C.Sequence * SEGMENT_SIZE + 5) >= fileDataBytes.Length-1)
+                    if ((C.Sequence * SEGMENT_SIZE + SEGMENT_SIZE) >= fileDataBytes.Length)
                     {
                         data.More = false;
                         int byteArraySize = fileDataBytes.Length - (C.Sequence * SEGMENT_SIZE) < 0 ? 0 : fileDataBytes.Length - (C.Sequence * SEGMENT_SIZE);
