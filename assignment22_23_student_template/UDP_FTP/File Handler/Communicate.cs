@@ -8,6 +8,7 @@ using System.IO;
 using UDP_FTP.Error_Handling;
 using UDP_FTP.Models;
 using static UDP_FTP.Models.Enums;
+using System.Linq;
 
 namespace UDP_FTP.File_Handler
 {
@@ -83,7 +84,13 @@ namespace UDP_FTP.File_Handler
                 More = true
             };
             AckMSG ack = new AckMSG();
-            CloseMSG cls = new CloseMSG();
+            CloseMSG cls = new CloseMSG()
+            {
+                ConID = C.ConID,
+                From = C.To,
+                To = C.From,
+                Type = Messages.CLOSE_REQUEST
+            };
 
             
             // TODO: Start the communication by receiving a HelloMSG message
@@ -132,7 +139,7 @@ namespace UDP_FTP.File_Handler
 
 
             // TODO:  Start sending file data by setting first the socket ReceiveTimeout value
-            socket.ReceiveTimeout = 5000;
+            socket.ReceiveTimeout = 300;
 
 
             // TODO: Open and read the text-file first
@@ -152,14 +159,17 @@ namespace UDP_FTP.File_Handler
             C.Sequence = 0;
             int SEGMENT_SIZE = (int)Params.SEGMENT_SIZE;
             int WINDOW_SIZE = (int)Params.WINDOW_SIZE;
-            
+
+
+
             bool sendingData = true;
+            List<int> allAcks = new List<int>();
             while (sendingData)
             {
                 for (int windowInt = 0; windowInt < (int)Params.WINDOW_SIZE; windowInt++)
                 {
-                    Console.WriteLine("sending window sequence number " + windowInt);
-                    if ((C.Sequence * SEGMENT_SIZE) + SEGMENT_SIZE >= fileDataBytes.Length)
+                    //Console.WriteLine("sending sequence number " + C.Sequence);
+                    if ((C.Sequence * SEGMENT_SIZE) >= fileDataBytes.Length)
                         data.More = false;
                     
                     data.Sequence = C.Sequence;
@@ -175,13 +185,22 @@ namespace UDP_FTP.File_Handler
 
                     var dataMessageBytes = Encoding.ASCII.GetBytes(JsonSerializer.Serialize(data));
                     socket.SendTo(dataMessageBytes, dataMessageBytes.Length, SocketFlags.None, remoteEP);
+                    allAcks.Add(C.Sequence);
 
                     C.Sequence++;
                 }
+                
 
                 // TODO: Check for acks. If ack not received, set C.Sequence to that ack's sequence number
-                bool[] received = new bool[WINDOW_SIZE];
 
+
+                //In the previous loop we tracked all the sequences sent to the client (see List AllAcks)  
+                List<int> acksNotLost = new List<int>();
+                bool[] received = new bool[WINDOW_SIZE];
+                int LowestLostAck = 0;
+                bool GotError = false;
+
+                //In this loop we track all the sequence numbers we got back so we can see what numbers we did not get back comparing with List AllAcks.
                 for (int ackInt = 0; ackInt < WINDOW_SIZE; ackInt++)
                 {
                     try
@@ -189,21 +208,30 @@ namespace UDP_FTP.File_Handler
                         var ackMessageBytes = socket.ReceiveFrom(buffer, ref remoteEP);
                         var ackMessageJson = Encoding.ASCII.GetString(buffer, 0, ackMessageBytes);
                         AckMSG ackMessage = JsonSerializer.Deserialize<AckMSG>(ackMessageJson);
-                        received[ackMessage.Sequence%SEGMENT_SIZE] = true;    
+                        Console.WriteLine("sequence number " + ackMessage.Sequence + " is confirmed ");
+
+                        acksNotLost.Add(ackMessage.Sequence);
+
+                        received[ackMessage.Sequence%WINDOW_SIZE] = true;    
                     }
                     catch {
-
+                        GotError = true;
                     }
                 }
+                Console.WriteLine("---------------------");
+                
 
+                //If an errors are generated when receiving it sets the Sequence back to the lowest number it got an error on.
                 for (int indexAct = 0; indexAct < WINDOW_SIZE; indexAct++)
                 {
-                    if (received[indexAct] == false)
+                    if (GotError)
                     {
-                        C.Sequence -= (WINDOW_SIZE - (indexAct));
+                        C.Sequence = LowestLostAck = allAcks.Except(acksNotLost).Union(acksNotLost.Except(allAcks)).Min();
                         break;
                     } 
                 }
+
+                allAcks = new List<int>(); //Reset AllAcks
             }
 
 
@@ -219,7 +247,29 @@ namespace UDP_FTP.File_Handler
 
             // TODO: Send a CloseMSG message to the client for the current session
             // Send close connection request
+            Console.WriteLine("Sending Close Request to Client");
 
+            while(true){
+
+                var closeRequestJson = JsonSerializer.Serialize(cls);
+                var closeRequestBytes = Encoding.ASCII.GetBytes(closeRequestJson);
+                socket.SendTo(closeRequestBytes, closeRequestBytes.Length, SocketFlags.None, remoteEP);
+
+                try{
+
+                    var closeConfirm = socket.ReceiveFrom(buffer, ref remoteEP);
+                    var closeConfirmJson = Encoding.ASCII.GetString(buffer, 0, closeConfirm);
+                    AckMSG closeCornfirm  = JsonSerializer.Deserialize<AckMSG>(closeConfirmJson);
+                    Console.WriteLine("Received close confirm message, Connection will be closed");
+                    break;
+                } 
+                catch{}
+
+            }
+
+            
+            
+        
             // TODO: Receive and verify a CloseMSG message confirmation for the current session
             // Get close connection confirmation
             // Receive the message and verify if there are no errors

@@ -19,7 +19,7 @@ namespace Client
             string serverIP = "127.0.0.1";
             string localIP = "127.0.0.1";
 
-            int[] failOn = { 4, 15, 34 };
+            int[] failOn = { 3, 4, 9, 13, 15, 34 };
 
             // TODO: add the student number of your group members as a string value. 
             // string format example: "Jan Jansen 09123456" 
@@ -58,9 +58,10 @@ namespace Client
             ack.From = localIP;
 
             CloseMSG cls = new CloseMSG();
-            cls.Type = Messages.CLOSE_REQUEST;
+            cls.Type = Messages.CLOSE_CONFIRM;
             cls.To = serverIP;
             cls.From = localIP;
+            
 
 
             ConSettings conSettings = new();
@@ -113,7 +114,6 @@ namespace Client
 
 
                 Dictionary<int, byte[]> gotten = new();
-
                 bool waitingForData = true;
                 while (waitingForData)
                 {
@@ -129,11 +129,7 @@ namespace Client
 
                     Console.WriteLine($"[seq: {dataMessage.Sequence}] {Encoding.ASCII.GetString(dataMessage.Data)}");
                                             
-                    if (gotten.ContainsKey(dataMessage.Sequence)) 
-                    {
-                        gotten.Add(dataMessage.Sequence, dataMessage.Data);
-                    }
-                    else
+                    if (!gotten.ContainsKey(dataMessage.Sequence)) 
                     {
                         gotten[dataMessage.Sequence] = dataMessage.Data;
                     }
@@ -157,14 +153,38 @@ namespace Client
                 //
                 
 
-
                 // TODO: Send back AckMSG for each received DataMSG 
 
 
                 // TODO: Receive close message
                 // receive the message and verify if there are no errors
+           
+                while (true)
+                {
 
+                    int closeRequestServer = sock.ReceiveFrom(buffer, ref receivingEP);
+                    
+                    var closeRequestString = Encoding.ASCII.GetString(buffer, 0, closeRequestServer);
+                    CloseMSG closeRequestMsg = JsonSerializer.Deserialize<CloseMSG>(closeRequestString);
+                    if (closeRequestMsg.Type != Messages.CLOSE_REQUEST && closeRequestMsg.ConID == conSettings.ConID)
+                    {
+                        Console.WriteLine("ERROR:\tGot message that is not a request message or the connection Id was wrong");
+                        continue;
+                    }
+                    Console.WriteLine("Close Reply message is sent");
+                    break;
+                }
+
+
+               
                 // TODO: confirm close message
+
+                Console.Write("INFO:\tsending Close confirm message to server... ");
+                var closeConfirm = Encoding.ASCII.GetBytes(JsonSerializer.Serialize(cls));
+                sock.SendTo(closeConfirm, closeConfirm.Length, SocketFlags.None, remoteEndpoint);
+                
+
+
 
             }
             catch (Exception err)
