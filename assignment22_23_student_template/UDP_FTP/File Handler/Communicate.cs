@@ -60,17 +60,37 @@ namespace UDP_FTP.File_Handler
             // TODO: Instantiate and initialize different messages needed for the communication
             // required messages are: HelloMSG, RequestMSG, DataMSG, AckMSG, CloseMSG
             // Set attribute values for each class accordingly 
+
+            
+            // TODO: Start the communication by receiving a HelloMSG message
+            // Receive and deserialize HelloMSG message 
+            // Verify if there are no errors
+            // Type must match one of the ConSettings' types and receiver address must be the server address
+            while (true)
+            {
+                int b = socket.ReceiveFrom(buffer, ref remoteEP);
+                var receivedData = Encoding.ASCII.GetString(buffer, 0, b);
+                    
+                var helloMessage = JsonSerializer.Deserialize<HelloMSG>(receivedData);
+                if (ErrorHandler.VerifyGreeting(helloMessage, C) != ErrorType.NOERROR)
+                    continue;
+                C.From = helloMessage.From;
+                break;
+            }
+            
             HelloMSG GreetBack = new HelloMSG
             {
                 ConID = C.ConID,
-                From = C.From,
+                From = C.To,
+                To = C.From,
                 Type = Messages.HELLO_REPLY,
             };
 
             RequestMSG req = new RequestMSG
             {
                 ConID = C.ConID,
-                From = C.From,
+                From = C.To,
+                To = C.From,
                 Type = Messages.REPLY,
             };
 
@@ -91,23 +111,6 @@ namespace UDP_FTP.File_Handler
                 To = C.From,
                 Type = Messages.CLOSE_REQUEST
             };
-
-            
-            // TODO: Start the communication by receiving a HelloMSG message
-            // Receive and deserialize HelloMSG message 
-            // Verify if there are no errors
-            // Type must match one of the ConSettings' types and receiver address must be the server address
-            while (true)
-            {
-                int b = socket.ReceiveFrom(buffer, ref remoteEP);
-                var receivedData = Encoding.ASCII.GetString(buffer, 0, b);
-                    
-                var helloMessage = JsonSerializer.Deserialize<HelloMSG>(receivedData);
-                if (ErrorHandler.VerifyGreeting(helloMessage, C) != ErrorType.NOERROR)
-                    continue;
-                break;
-            }
-            
 
             // TODO: If no error is found then HelloMSG will be sent back
             var GreetBackJson = JsonSerializer.Serialize(GreetBack);
@@ -161,38 +164,51 @@ namespace UDP_FTP.File_Handler
             int WINDOW_SIZE = (int)Params.WINDOW_SIZE;
 
 
-
             bool sendingData = true;
+            bool sentLastData = false;
             List<int> allAcks = new List<int>();
             while (sendingData)
             {
-                for (int windowInt = 0; windowInt < (int)Params.WINDOW_SIZE; windowInt++)
+                for (int windowInt = 0; windowInt < WINDOW_SIZE; windowInt++)
                 {
                     //Console.WriteLine("sending sequence number " + C.Sequence);
-                    if ((C.Sequence * SEGMENT_SIZE) >= fileDataBytes.Length)
+                    if (sentLastData)
+                        break;
+
+                    if ((C.Sequence * SEGMENT_SIZE + 5) >= fileDataBytes.Length-1)
+                    {
                         data.More = false;
+                        int byteArraySize = fileDataBytes.Length - (C.Sequence * SEGMENT_SIZE) < 0 ? 0 : fileDataBytes.Length - (C.Sequence * SEGMENT_SIZE);
+                        data.Data = new byte[byteArraySize];
+                        sentLastData = true;
+                    }
+                    else
+                    {
+                        data.Data = new byte[SEGMENT_SIZE];
+                    }
                     
                     data.Sequence = C.Sequence;
-                    data.Data = new byte[SEGMENT_SIZE];
                     
                     for (int index = C.Sequence * SEGMENT_SIZE; index < C.Sequence * SEGMENT_SIZE + SEGMENT_SIZE; index++)
-                        try {
-                            data.Data[index%SEGMENT_SIZE] = fileDataBytes[index];
+                    {
+                        if (index >= fileDataBytes.Length) {
+                            break;
                         }
-                        catch {
-                            sendingData = false;
-                        }
+                        data.Data[index%SEGMENT_SIZE] = fileDataBytes[index];
+                    }
 
                     var dataMessageBytes = Encoding.ASCII.GetBytes(JsonSerializer.Serialize(data));
                     socket.SendTo(dataMessageBytes, dataMessageBytes.Length, SocketFlags.None, remoteEP);
                     allAcks.Add(C.Sequence);
 
                     C.Sequence++;
+
                 }
                 
 
                 // TODO: Check for acks. If ack not received, set C.Sequence to that ack's sequence number
-
+                if (allAcks.Count == 0)
+                    break;
 
                 //In the previous loop we tracked all the sequences sent to the client (see List AllAcks)  
                 List<int> acksNotLost = new List<int>();
@@ -201,7 +217,7 @@ namespace UDP_FTP.File_Handler
                 bool GotError = false;
 
                 //In this loop we track all the sequence numbers we got back so we can see what numbers we did not get back comparing with List AllAcks.
-                for (int ackInt = 0; ackInt < WINDOW_SIZE; ackInt++)
+                for (int ackInt = 0; ackInt < allAcks.Count; ackInt++)
                 {
                     try
                     {
@@ -230,7 +246,7 @@ namespace UDP_FTP.File_Handler
                         break;
                     } 
                 }
-
+                
                 allAcks = new List<int>(); //Reset AllAcks
             }
 

@@ -4,6 +4,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
+using System.IO;
 using System.Linq;
 using Client.Models;
 using Client.Error_Handling;
@@ -87,8 +88,15 @@ namespace Client
                 var helloReplyString = Encoding.ASCII.GetString(buffer, 0, helloReplyBytes);
                 var helloReply = JsonSerializer.Deserialize<HelloMSG>(helloReplyString);
 
-                ErrorHandler.VerifyGreeting(helloReply, conSettings);
+                switch (ErrorHandler.VerifyGreeting(helloReply, conSettings)) {
+                    case ErrorType.NOERROR:
+                        break;
+                    default:
+                        Console.WriteLine("Gotten response was invalid, quitting");
+                        return;
+                }
                 Console.WriteLine("received!");
+
                 conSettings.ConID = helloReply.ConID;
 
                 r.ConID = conSettings.ConID;
@@ -109,12 +117,20 @@ namespace Client
                 var requestReplyJson = Encoding.ASCII.GetString(buffer, 0, requestReplyBytes);
                 var requestReply = JsonSerializer.Deserialize<RequestMSG>(requestReplyJson);
 
-                ErrorHandler.VerifyRequest(requestReply, conSettings);
-                Console.WriteLine($"received!");
+                
+                switch (ErrorHandler.VerifyRequest(requestReply, conSettings)) {
+                    case ErrorType.NOERROR:
+                        break;
+                    default:
+                        Console.WriteLine("Gotten response was invalid, quitting");
+                        return;
+                }
+                Console.WriteLine("received!");
 
 
                 Dictionary<int, byte[]> gotten = new();
                 bool waitingForData = true;
+                int lastDataIndex = 0;
                 while (waitingForData)
                 {
                     var dataMessageBytes = sock.ReceiveFrom(buffer, ref receivingEP);
@@ -133,7 +149,7 @@ namespace Client
                     {
                         gotten[dataMessage.Sequence] = dataMessage.Data;
                     }
-                    
+
                     ack.Sequence = dataMessage.Sequence;
                     var ackBytes = Encoding.ASCII.GetBytes(JsonSerializer.Serialize(ack));
                     sock.SendTo(ackBytes, ackBytes.Length, SocketFlags.None, remoteEndpoint);
@@ -144,6 +160,7 @@ namespace Client
                             if (!gotten.ContainsKey(gottenKey))
                                 break;
                             if (gottenKey == dataMessage.Sequence)
+                                lastDataIndex = dataMessage.Sequence;
                                 waitingForData = false;
                         }
                 }
@@ -171,6 +188,14 @@ namespace Client
                         Console.WriteLine("ERROR:\tGot message that is not a request message or the connection Id was wrong");
                         continue;
                     }
+                    
+                    if (ErrorHandler.VerifyClose(closeRequestMsg, conSettings) != ErrorType.NOERROR)
+                    {
+                        Console.WriteLine("Got wrong response");
+                        Console.WriteLine(closeRequestString);
+                        continue;
+                    }
+
                     Console.WriteLine("Close Reply message is sent");
                     break;
                 }
@@ -183,14 +208,21 @@ namespace Client
                 var closeConfirm = Encoding.ASCII.GetBytes(JsonSerializer.Serialize(cls));
                 sock.SendTo(closeConfirm, closeConfirm.Length, SocketFlags.None, remoteEndpoint);
                 
-
-
+                string fileContent = String.Empty;
+                foreach (int index in gotten.Keys.OrderBy(x => x))
+                {
+                    fileContent += Encoding.ASCII.GetString(gotten[index]);
+                    if (index == lastDataIndex)
+                        break;
+                }
+                    
+                File.WriteAllText("test.txt", fileContent);
 
             }
             catch (Exception err)
             {
                 Console.WriteLine("\n Socket Error. Terminating");
-                Console.WriteLine("ERROR: " + err.StackTrace);
+                Console.WriteLine("ERROR: " + err.Message + err.StackTrace);
             }
 
             Console.WriteLine("Download Complete!");

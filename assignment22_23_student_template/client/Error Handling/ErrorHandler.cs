@@ -12,13 +12,13 @@ namespace Client.Error_Handling
     {
         public static ErrorType VerifyGreeting( HelloMSG hello, ConSettings C)
         {
-            if ( hello.To != C.To || hello.Type != Messages.HELLO)
+            if ( hello.To != C.To || hello.Type != Messages.HELLO_REPLY)
                 return ErrorType.BADREQUEST;
             return ErrorType.NOERROR;
         }
         public static ErrorType VerifyRequest( RequestMSG req, ConSettings C)
         {
-            if (req.ConID != C.ConID || req.From != C.From || req.To != C.To || req.Type != Messages.REQUEST)
+            if (req.ConID != C.ConID || req.From != C.From || req.To != C.To || req.Type != Messages.REPLY)
                 return ErrorType.BADREQUEST;
             return ErrorType.NOERROR;
         }
@@ -30,7 +30,7 @@ namespace Client.Error_Handling
         }
         public static ErrorType VerifyClose( CloseMSG cls, ConSettings C)
         {
-            if (cls.ConID != C.ConID || cls.From != C.From || cls.To != C.To || cls.Type != Messages.CLOSE_CONFIRM)
+            if (cls.ConID != C.ConID || cls.From != C.From || cls.To != C.To || cls.Type != Messages.CLOSE_REQUEST)
                 return ErrorType.BADREQUEST;
             return ErrorType.NOERROR;
         }
