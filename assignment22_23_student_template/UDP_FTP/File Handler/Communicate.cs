@@ -50,7 +50,7 @@ namespace UDP_FTP.File_Handler
             C = new ConSettings
             {
                 From = "",
-                To = "127.0.0.1",
+                To = "MyServer",
                 ConID = SessionID,
             };
         }
@@ -129,24 +129,27 @@ namespace UDP_FTP.File_Handler
                 return ErrorType.BADREQUEST;
             }
             
-
+            bool fileExists = File.Exists(requestMessage.FileName);
+            Console.WriteLine(requestMessageJson);
 
             // TODO: Send a RequestMSG of type REPLY message to remoteEndpoint verifying the status
-            req.To = C.To;
             req.FileName = requestMessage.FileName;
-            req.Status = ErrorType.NOERROR;
+            req.Status = fileExists ? ErrorType.NOERROR : ErrorType.BADREQUEST;
 
             var requestReplyJson = JsonSerializer.Serialize(req);
             var requestReplyBytes = Encoding.ASCII.GetBytes(requestReplyJson);
             socket.SendTo(requestReplyBytes, requestReplyBytes.Length, SocketFlags.None, remoteEP);
 
-
+            if (!fileExists)
+                return ErrorType.BADREQUEST;
+            
             // TODO:  Start sending file data by setting first the socket ReceiveTimeout value
             socket.ReceiveTimeout = 300;
 
 
             // TODO: Open and read the text-file first
             // Make sure to locate a path on windows and macos platforms
+            
             var fileDataBytes = File.ReadAllBytes(requestMessage.FileName);
 
             // TODO: Sliding window with go-back-n implementation
@@ -226,6 +229,13 @@ namespace UDP_FTP.File_Handler
                         AckMSG ackMessage = JsonSerializer.Deserialize<AckMSG>(ackMessageJson);
                         Console.WriteLine("sequence number " + ackMessage.Sequence + " is confirmed ");
 
+                        if (!allAcks.Contains(ackMessage.Sequence)) {
+                            Console.WriteLine("Received an ack for a sequence number that was not sent");
+                            continue;
+                        }
+                        
+                            
+                        
                         acksNotLost.Add(ackMessage.Sequence);
 
                         received[ackMessage.Sequence%WINDOW_SIZE] = true;    

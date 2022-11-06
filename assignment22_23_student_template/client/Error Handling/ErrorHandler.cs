@@ -3,10 +3,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using Client.Models;
-using static Client.Models.Enums;
+using UDP_FTP.Models;
+using static UDP_FTP.Models.Enums;
 
-namespace Client.Error_Handling
+namespace UDP_FTP.Error_Handling
 {
     public static class ErrorHandler
     {

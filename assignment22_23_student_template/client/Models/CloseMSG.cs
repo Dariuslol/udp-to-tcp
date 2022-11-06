@@ -3,9 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using static Client.Models.Enums;
+using static UDP_FTP.Models.Enums;
 
-namespace Client.Models
+namespace UDP_FTP.Models
 {
     public class CloseMSG
     {
