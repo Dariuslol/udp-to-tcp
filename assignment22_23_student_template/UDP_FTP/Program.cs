@@ -17,7 +17,6 @@ namespace UDP_FTP
             string student_1 = "Darius van Essen 1026751";
             string student_2 = "Nino Reichardt 1038779";
 
-            
 
             Console.WriteLine("Server is waiting for new request!");
             Communicate FileShare = new Communicate();

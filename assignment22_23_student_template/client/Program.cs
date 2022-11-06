@@ -44,29 +44,29 @@ namespace Client
 
             HelloMSG h = new HelloMSG();
             h.Type = Messages.HELLO;
-            h.To = serverIP;
+            h.To = "MyServer";
             h.From = localIP;
 
             RequestMSG r = new RequestMSG();
             r.Type = Messages.REQUEST;
-            r.To = serverIP;
+            r.To = "MyServer";
             r.From = localIP;
             r.FileName = "test.txt";
 
             AckMSG ack = new AckMSG();
             ack.Type = Messages.ACK;
-            ack.To = serverIP;
+            ack.To = "MyServer";
             ack.From = localIP;
 
             CloseMSG cls = new CloseMSG();
             cls.Type = Messages.CLOSE_CONFIRM;
-            cls.To = serverIP;
+            cls.To = "MyServer";
             cls.From = localIP;
             
 
 
             ConSettings conSettings = new();
-            conSettings.From = serverIP;
+            conSettings.From = "MyServer";
             conSettings.To = localIP;
 
             try
@@ -164,17 +164,6 @@ namespace Client
                                 waitingForData = false;
                         }
                 }
-
-                // TODO: Check if there are more DataMSG messages to be received 
-                // receive the message and verify if there are no errors
-                //
-                
-
-                // TODO: Send back AckMSG for each received DataMSG 
-
-
-                // TODO: Receive close message
-                // receive the message and verify if there are no errors
            
                 while (true)
                 {
